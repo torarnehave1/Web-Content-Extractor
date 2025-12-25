@@ -204,16 +204,16 @@ function isAllowedOrigin(request) {
 }
 
 async function verifyAdminSession(request) {
-  const cookie = request.headers.get('Cookie');
-  if (!cookie) {
-    return { ok: false, status: 401 };
-  }
-
   try {
-    const response = await fetch('https://auth.vegvisr.org/auth/openauth/session', {
+    const token = getAuthToken(request);
+    if (!token) {
+      return { ok: false, status: 401 };
+    }
+
+    const response = await fetch('https://dashboard.vegvisr.org/auth/validate-token', {
       method: 'GET',
       headers: {
-        Cookie: cookie,
+        Authorization: `Bearer ${token}`,
         Accept: 'application/json'
       }
     });
@@ -223,8 +223,8 @@ async function verifyAdminSession(request) {
     }
 
     const data = await response.json().catch(() => null);
-    const role = data?.subject?.role;
-    if (data?.success && (role === 'Superadmin' || role === 'Admin')) {
+    const role = data?.role;
+    if (data?.valid && (role === 'Superadmin' || role === 'Admin')) {
       return { ok: true, status: 200 };
     }
 
@@ -233,6 +233,25 @@ async function verifyAdminSession(request) {
     console.error('Auth check failed:', error);
     return { ok: false, status: 500 };
   }
+}
+
+function getAuthToken(request) {
+  const headerToken = request.headers.get('X-API-Token');
+  if (headerToken) return headerToken;
+
+  const authHeader = request.headers.get('Authorization') || '';
+  if (authHeader.startsWith('Bearer ')) {
+    return authHeader.slice(7);
+  }
+
+  const cookieHeader = request.headers.get('Cookie') || '';
+  const cookies = Object.fromEntries(
+    cookieHeader.split(';').map((entry) => {
+      const [key, ...rest] = entry.trim().split('=');
+      return [key, rest.join('=')];
+    })
+  );
+  return cookies.vegvisr_token || null;
 }
 
 /**
