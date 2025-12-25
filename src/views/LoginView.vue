@@ -128,6 +128,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '../stores/userStore'
 
 const AUTH_API = 'https://wcx-auth-worker.torarnehave.workers.dev'
+const EMAIL_WORKER = 'https://email-worker.torarnehave.workers.dev'
 
 const email = ref('')
 const phone = ref('')
@@ -324,10 +325,13 @@ async function handleEmailSubmit() {
 
 async function sendMagicLink() {
   try {
-    const res = await fetch(`${AUTH_API}/magic/send`, {
+    const res = await fetch(`${EMAIL_WORKER}/login/magic/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.value }),
+      body: JSON.stringify({
+        email: email.value,
+        redirectUrl: 'https://wcx.vegvisr.org/login'
+      }),
     })
     const data = await res.json()
     if (!res.ok || !data.success) {
@@ -348,7 +352,7 @@ async function verifyMagicToken(token) {
   resetMessages()
   try {
     const res = await fetch(
-      `${AUTH_API}/magic/verify?token=${encodeURIComponent(token)}`,
+      `${EMAIL_WORKER}/login/magic/verify?token=${encodeURIComponent(token)}`,
       {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
