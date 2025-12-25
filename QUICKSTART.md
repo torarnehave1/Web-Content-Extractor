@@ -25,12 +25,22 @@ npm run dev
 
 The app will open at `http://localhost:3000`
 
+### 2b. Start Pages Functions (local API)
+
+```bash
+npx wrangler pages dev . --port 8788
+```
+
+This serves the API at `http://localhost:8788/api/extract-content`.
+
 ### 3. Try It Out!
 
 1. Enter a URL (try: `https://behindeverytemple.org/dharma-blog/dharmic-influencers-to-follow-in-2024/`)
 2. Click "Extract Content"
 3. View the markdown result
 4. Copy or download the content
+
+Tip: If a site blocks server-side fetching, switch to "Paste HTML" mode and paste the page HTML.
 
 That's it! 🎉
 
@@ -68,6 +78,13 @@ npm run build
 npx wrangler login
 npx wrangler pages deploy dist --project-name=web-content-extractor
 ```
+
+Cloudflare Pages settings (Git integration):
+
+- Build command: `npm run build`
+- Output directory: `dist`
+- Functions directory: `functions`
+- Node version: 18+
 
 ## Need Help?
 
