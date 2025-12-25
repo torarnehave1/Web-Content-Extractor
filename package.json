@@ -1,0 +1,29 @@
+{
+  "name": "web-content-extractor",
+  "version": "1.0.0",
+  "description": "Ethical web content extraction tool with markdown conversion and proper attribution",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "wrangler pages deploy dist"
+  },
+  "dependencies": {
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "vite": "^5.0.0",
+    "wrangler": "^3.0.0"
+  },
+  "keywords": [
+    "web-scraping",
+    "markdown",
+    "content-extraction",
+    "cloudflare-workers",
+    "vue"
+  ],
+  "author": "",
+  "license": "MIT"
+}
