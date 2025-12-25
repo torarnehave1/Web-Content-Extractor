@@ -128,6 +128,25 @@
           <span class="button-icon">{{ showPreview ? '📝' : '👁️' }}</span>
           <span>{{ showPreview ? 'Show Raw' : 'Show Preview' }}</span>
         </button>
+
+        <button
+          @click="saveToKnowledgeGraph"
+          class="action-button save-button"
+          :disabled="savingGraph || loading"
+        >
+          <span class="button-icon">🧠</span>
+          <span>{{ savingGraph ? 'Saving...' : 'Save to Graph' }}</span>
+        </button>
+      </div>
+
+      <div v-if="saveMessage" class="save-message" role="status">
+        <span class="save-icon">✅</span>
+        <span>{{ saveMessage }}</span>
+      </div>
+
+      <div v-if="saveError" class="save-message error" role="alert">
+        <span class="save-icon">⚠️</span>
+        <span>{{ saveError }}</span>
       </div>
 
       <div class="content-display">
@@ -170,10 +189,14 @@ export default {
       htmlInput: '',
       inputMode: 'url',
       loading: false,
+      savingGraph: false,
       error: null,
+      saveMessage: null,
+      saveError: null,
       result: null,
       copied: false,
       showPreview: true,
+      lastExtractPayload: null,
       exampleUrls: [
         {
           label: 'Blog Article',
@@ -209,6 +232,8 @@ export default {
       this.error = null;
       this.result = null;
       this.copied = false;
+      this.saveMessage = null;
+      this.saveError = null;
 
       try {
         let pageHtml = null;
@@ -258,11 +283,77 @@ export default {
         }
 
         this.result = data;
+        this.lastExtractPayload = { url: this.url, html: pageHtml };
       } catch (err) {
         this.error = err.message || 'An error occurred while extracting content';
         console.error('Extraction error:', err);
       } finally {
         this.loading = false;
+      }
+    },
+
+    async saveToKnowledgeGraph() {
+      if (!this.result || this.savingGraph) {
+        return;
+      }
+
+      this.savingGraph = true;
+      this.saveMessage = null;
+      this.saveError = null;
+
+      try {
+        const apiUrl = import.meta.env.DEV
+          ? '/api/extract-content'
+          : '/api/extract-content';
+
+        const basePayload = this.lastExtractPayload || {
+          url: this.result.url || this.url || ''
+        };
+
+        const payload = {
+          ...basePayload,
+          saveToKnowledgeGraph: true,
+          knowledgeGraphTitle: this.result.title || 'Extracted Content',
+          knowledgeGraphDescription: this.result.description || '',
+          knowledgeGraphCreatedBy: 'web-content-extractor'
+        };
+
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const rawText = await response.text();
+        let data = null;
+        if (rawText) {
+          try {
+            data = JSON.parse(rawText);
+          } catch (parseError) {
+            throw new Error(`Unexpected response (${response.status})`);
+          }
+        }
+
+        if (!response.ok) {
+          throw new Error((data && data.error) || `Request failed (${response.status})`);
+        }
+
+        const saved = data?.knowledgeGraph?.saved;
+        const savedId = data?.knowledgeGraph?.id;
+        if (!saved) {
+          throw new Error(data?.knowledgeGraph?.error || 'Failed to save knowledge graph');
+        }
+
+        this.saveMessage = savedId
+          ? `Saved to knowledge graph: ${savedId}`
+          : 'Saved to knowledge graph';
+      } catch (err) {
+        this.saveError = err.message || 'Failed to save knowledge graph';
+        console.error('Save graph error:', err);
+      } finally {
+        this.savingGraph = false;
       }
     },
 
@@ -316,6 +407,8 @@ export default {
       this.inputMode = 'url';
       this.htmlInput = '';
       this.url = exampleUrl;
+      this.saveMessage = null;
+      this.saveError = null;
       this.extractContent();
     },
 
@@ -777,6 +870,18 @@ export default {
   color: #3498db;
 }
 
+.action-button.save-button {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border-color: #c8e6c9;
+}
+
+.action-button.save-button:hover:not(:disabled) {
+  background: #dff1e1;
+  border-color: #81c784;
+  color: #1b5e20;
+}
+
 .copy-button.copied {
   background: #27ae60;
   color: white;
@@ -784,6 +889,28 @@ export default {
 }
 
 .button-icon {
+  font-size: 1.1rem;
+}
+
+.save-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.save-message.error {
+  background: #fdecea;
+  color: #b71c1c;
+}
+
+.save-icon {
   font-size: 1.1rem;
 }
 
