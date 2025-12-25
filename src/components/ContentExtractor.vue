@@ -12,13 +12,34 @@
     </div>
 
     <div class="input-section">
+      <div class="mode-toggle" role="group" aria-label="Input mode">
+        <button
+          type="button"
+          class="mode-button"
+          :class="{ active: inputMode === 'url' }"
+          @click="inputMode = 'url'"
+          :disabled="loading"
+        >
+          Fetch URL
+        </button>
+        <button
+          type="button"
+          class="mode-button"
+          :class="{ active: inputMode === 'html' }"
+          @click="inputMode = 'html'"
+          :disabled="loading"
+        >
+          Paste HTML
+        </button>
+      </div>
+
       <div class="url-input-wrapper">
         <label for="url-input" class="visually-hidden">Enter article URL</label>
         <input
           id="url-input"
           v-model="url"
           type="url"
-          placeholder="https://example.com/article"
+          :placeholder="inputMode === 'url' ? 'https://example.com/article' : 'Source URL (optional)'"
           @keyup.enter="extractContent"
           :disabled="loading"
           aria-label="Article URL"
@@ -26,13 +47,28 @@
         />
         <button
           @click="extractContent"
-          :disabled="loading || !url"
+          :disabled="loading || !canExtract"
           class="extract-button"
           :class="{ loading: loading }"
         >
           <span v-if="loading" class="spinner"></span>
           <span>{{ loading ? 'Extracting...' : 'Extract Content' }}</span>
         </button>
+      </div>
+
+      <div v-if="inputMode === 'html'" class="html-input-wrapper">
+        <label for="html-input" class="html-label">Paste HTML</label>
+        <textarea
+          id="html-input"
+          v-model="htmlInput"
+          class="html-input"
+          rows="8"
+          placeholder="Paste the page HTML here"
+          :disabled="loading"
+        ></textarea>
+        <p class="html-hint">
+          This bypasses server-side fetching. Useful when a site blocks the worker or requires cookies.
+        </p>
       </div>
 
       <div v-if="error" class="error-message" role="alert">
@@ -64,7 +100,7 @@
           <div v-if="result.date" class="metadata-item">
             <strong>Published:</strong> {{ formatDate(result.date) }}
           </div>
-          <div class="metadata-item">
+          <div v-if="result.url" class="metadata-item">
             <strong>Source:</strong>
             <a :href="result.url" target="_blank" rel="noopener noreferrer">
               {{ result.url }}
@@ -131,6 +167,8 @@ export default {
   data() {
     return {
       url: '',
+      htmlInput: '',
+      inputMode: 'url',
       loading: false,
       error: null,
       result: null,
@@ -146,6 +184,13 @@ export default {
   },
 
   computed: {
+    canExtract() {
+      if (this.inputMode === 'html') {
+        return Boolean(this.htmlInput && this.htmlInput.trim());
+      }
+      return Boolean(this.url && this.url.trim());
+    },
+
     renderedMarkdown() {
       if (!this.result || !this.result.markdown) {
         return '';
@@ -156,7 +201,7 @@ export default {
 
   methods: {
     async extractContent() {
-      if (!this.url || this.loading) {
+      if (!this.canExtract || this.loading) {
         return;
       }
 
@@ -166,6 +211,21 @@ export default {
       this.copied = false;
 
       try {
+        let pageHtml = null;
+        if (this.inputMode === 'html') {
+          pageHtml = this.htmlInput;
+        } else {
+          try {
+            const pageResponse = await fetch(this.url, { method: 'GET' });
+            const contentType = pageResponse.headers.get('content-type') || '';
+            if (pageResponse.ok && /text\/html|application\/xhtml\+xml/i.test(contentType)) {
+              pageHtml = await pageResponse.text();
+            }
+          } catch (fetchError) {
+            // Likely CORS or network error; fall back to worker fetch.
+          }
+        }
+
         // Determine API endpoint
         const apiUrl = import.meta.env.DEV
           ? '/api/extract-content'
@@ -176,13 +236,25 @@ export default {
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ url: this.url })
+          body: JSON.stringify({ url: this.url, html: pageHtml })
         });
 
-        const data = await response.json();
+        const rawText = await response.text();
+        let data = null;
+        if (rawText) {
+          try {
+            data = JSON.parse(rawText);
+          } catch (parseError) {
+            throw new Error(`Unexpected response (${response.status})`);
+          }
+        }
 
-        if (!response.ok || !data.success) {
-          throw new Error(data.error || 'Failed to extract content');
+        if (!response.ok) {
+          throw new Error((data && data.error) || `Request failed (${response.status})`);
+        }
+
+        if (!data || !data.success) {
+          throw new Error((data && data.error) || 'Failed to extract content');
         }
 
         this.result = data;
@@ -241,6 +313,8 @@ export default {
     },
 
     loadExample(exampleUrl) {
+      this.inputMode = 'url';
+      this.htmlInput = '';
       this.url = exampleUrl;
       this.extractContent();
     },
@@ -437,6 +511,37 @@ export default {
   margin-bottom: 30px;
 }
 
+.mode-toggle {
+  display: inline-flex;
+  gap: 8px;
+  padding: 4px;
+  background: #f1f3f5;
+  border-radius: 999px;
+  margin-bottom: 16px;
+}
+
+.mode-button {
+  border: none;
+  background: transparent;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-weight: 600;
+  color: #5f6b75;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.mode-button.active {
+  background: white;
+  color: #2c3e50;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.mode-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .url-input-wrapper {
   display: flex;
   gap: 10px;
@@ -460,6 +565,44 @@ export default {
 .url-input:disabled {
   background: #f5f5f5;
   cursor: not-allowed;
+}
+
+.html-input-wrapper {
+  margin-bottom: 15px;
+}
+
+.html-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #2c3e50;
+}
+
+.html-input {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 0.95rem;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  resize: vertical;
+  min-height: 160px;
+  font-family: 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+.html-input:focus {
+  outline: none;
+  border-color: #3498db;
+}
+
+.html-input:disabled {
+  background: #f5f5f5;
+  cursor: not-allowed;
+}
+
+.html-hint {
+  margin: 8px 0 0 0;
+  font-size: 0.9rem;
+  color: #7f8c8d;
 }
 
 .extract-button {

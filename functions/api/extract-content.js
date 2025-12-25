@@ -20,47 +20,68 @@ export async function onRequestPost(context) {
   }
 
   try {
-    const { url } = await request.json();
-
-    // Validate URL
-    if (!url) {
-      return new Response(JSON.stringify({ error: 'URL is required' }), {
-        status: 400,
-        headers: corsHeaders
-      });
-    }
-
-    // Validate URL format
-    let validUrl;
+    let payload;
     try {
-      validUrl = new URL(url);
-      if (!['http:', 'https:'].includes(validUrl.protocol)) {
-        throw new Error('Invalid protocol');
-      }
+      payload = await request.json();
     } catch (e) {
-      return new Response(JSON.stringify({ error: 'Invalid URL format' }), {
+      return new Response(JSON.stringify({ error: 'Invalid JSON payload' }), {
         status: 400,
         headers: corsHeaders
       });
     }
 
-    // Fetch webpage
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; ContentExtractor/1.0; +https://github.com/yourusername/web-content-extractor)'
-      },
-      // Timeout after 10 seconds
-      signal: AbortSignal.timeout(10000)
-    });
+    const { url, html } = payload || {};
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
+    if (!url && !html) {
+      return new Response(JSON.stringify({ error: 'URL or HTML is required' }), {
+        status: 400,
+        headers: corsHeaders
+      });
     }
 
-    const html = await response.text();
+    // Validate URL format when provided
+    if (url) {
+      try {
+        const validUrl = new URL(url);
+        if (!['http:', 'https:'].includes(validUrl.protocol)) {
+          throw new Error('Invalid protocol');
+        }
+      } catch (e) {
+        return new Response(JSON.stringify({ error: 'Invalid URL format' }), {
+          status: 400,
+          headers: corsHeaders
+        });
+      }
+    }
+
+    let resolvedHtml = html;
+
+    if (!resolvedHtml) {
+      // Fetch webpage
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; ContentExtractor/1.0; +https://github.com/yourusername/web-content-extractor)',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9'
+        },
+        // Timeout after 10 seconds
+        signal: AbortSignal.timeout(10000)
+      });
+
+      if (!response.ok) {
+        return new Response(JSON.stringify({
+          error: `Failed to fetch: ${response.status} ${response.statusText}`
+        }), {
+          status: response.status,
+          headers: corsHeaders
+        });
+      }
+
+      resolvedHtml = await response.text();
+    }
 
     // Extract content and convert to markdown
-    const extracted = extractContent(html, url);
+    const extracted = extractContent(resolvedHtml, url || '');
 
     // Optional: Save to D1 database if configured
     // if (env.DB) {
@@ -124,7 +145,8 @@ function extractMetadata(html, sourceUrl) {
     title: '',
     author: '',
     date: '',
-    description: ''
+    description: '',
+    url: sourceUrl
   };
 
   // Extract title
@@ -137,6 +159,21 @@ function extractMetadata(html, sourceUrl) {
   const ogTitleMatch = html.match(/<meta\s+property=["']og:title["']\s+content=["']([^"']+)["']/i);
   if (ogTitleMatch) {
     metadata.title = decodeHtmlEntities(ogTitleMatch[1]);
+  }
+
+  // Extract canonical or Open Graph URL
+  if (!metadata.url) {
+    const canonicalMatch = html.match(/<link\s+rel=["']canonical["']\s+href=["']([^"']+)["']/i);
+    if (canonicalMatch) {
+      metadata.url = canonicalMatch[1];
+    }
+  }
+
+  if (!metadata.url) {
+    const ogUrlMatch = html.match(/<meta\s+property=["']og:url["']\s+content=["']([^"']+)["']/i);
+    if (ogUrlMatch) {
+      metadata.url = ogUrlMatch[1];
+    }
   }
 
   // Extract author
@@ -218,7 +255,7 @@ function findMainContent(html) {
   content = content.replace(/<header\b[^>]*>[\s\S]*?<\/header>/gi, '');
   content = content.replace(/<footer\b[^>]*>[\s\S]*?<\/footer>/gi, '');
   content = content.replace(/<aside\b[^>]*>[\s\S]*?<\/aside>/gi, '');
-  content = content.replace(/<div[^>]*class=["'][^"']*(sidebar|widget|advertisement|ad-|promo)[^"']*["'][^>]*>[\s\S]*?<\/div>/gi, '');
+  content = content.replace(/<div[^>]*class=["'][^"']*(sidebar|advertisement|ad-|promo)[^"']*["'][^>]*>[\s\S]*?<\/div>/gi, '');
 
   return content || html;
 }
@@ -335,7 +372,9 @@ function buildMarkdownWithAttribution(markdown, metadata) {
     output += `**Published:** ${formattedDate}\n\n`;
   }
 
-  output += `**Source:** [${metadata.url}](${metadata.url})\n\n`;
+  if (metadata.url) {
+    output += `**Source:** [${metadata.url}](${metadata.url})\n\n`;
+  }
   output += '---\n\n';
 
   // Add main content
@@ -347,7 +386,11 @@ function buildMarkdownWithAttribution(markdown, metadata) {
   output += 'This content was extracted for educational and reference purposes. ';
   output += 'All rights belong to the original author and publisher. ';
   output += 'Please respect copyright and always attribute the source when using this content.\n\n';
-  output += `**Original Source:** [${metadata.url}](${metadata.url})\n`;
+  if (metadata.url) {
+    output += `**Original Source:** [${metadata.url}](${metadata.url})\n`;
+  } else {
+    output += '**Original Source:** (not provided)\n';
+  }
   output += `**Extracted:** ${new Date().toLocaleString('en-US')}\n`;
 
   return output;
@@ -368,8 +411,8 @@ function decodeHtmlEntities(text) {
     '&mdash;': '—',
     '&ndash;': '–',
     '&hellip;': '…',
-    '&lsquo;': ''',
-    '&rsquo;': ''',
+    '&lsquo;': "'",
+    '&rsquo;': "'",
     '&ldquo;': '"',
     '&rdquo;': '"',
     '&bull;': '•',
