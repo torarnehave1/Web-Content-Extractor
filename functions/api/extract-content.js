@@ -30,7 +30,16 @@ export async function onRequestPost(context) {
       });
     }
 
-    const { url, html } = payload || {};
+    const {
+      url,
+      html,
+      saveToKnowledgeGraph,
+      knowledgeGraphId,
+      knowledgeGraphTitle,
+      knowledgeGraphDescription,
+      knowledgeGraphCreatedBy,
+      knowledgeGraphOverride
+    } = payload || {};
 
     if (!url && !html) {
       return new Response(JSON.stringify({ error: 'URL or HTML is required' }), {
@@ -83,6 +92,17 @@ export async function onRequestPost(context) {
     // Extract content and convert to markdown
     const extracted = extractContent(resolvedHtml, url || '');
 
+    let knowledgeGraphResult = null;
+    if (saveToKnowledgeGraph) {
+      knowledgeGraphResult = await saveToKnowledgeGraphWorker(env, extracted, {
+        id: knowledgeGraphId,
+        title: knowledgeGraphTitle,
+        description: knowledgeGraphDescription,
+        createdBy: knowledgeGraphCreatedBy,
+        override: knowledgeGraphOverride
+      });
+    }
+
     // Optional: Save to D1 database if configured
     // if (env.DB) {
     //   await saveToDatabase(env.DB, extracted);
@@ -90,7 +110,8 @@ export async function onRequestPost(context) {
 
     return new Response(JSON.stringify({
       success: true,
-      ...extracted
+      ...extracted,
+      knowledgeGraph: knowledgeGraphResult
     }), {
       headers: corsHeaders
     });
@@ -132,6 +153,7 @@ function extractContent(html, sourceUrl) {
     title: metadata.title,
     author: metadata.author,
     date: metadata.date,
+    description: metadata.description,
     markdown: finalMarkdown,
     extractedAt: new Date().toISOString()
   };
@@ -434,6 +456,85 @@ function decodeHtmlEntities(text) {
   decoded = decoded.replace(/&#x([0-9a-f]+);/gi, (match, hex) => String.fromCharCode(parseInt(hex, 16)));
 
   return decoded;
+}
+
+/**
+ * Save markdown to knowledge-graph-worker via service binding
+ */
+async function saveToKnowledgeGraphWorker(env, extracted, options) {
+  if (!env?.KNOWLEDGE_GRAPH_WORKER?.fetch) {
+    return { saved: false, error: 'Knowledge graph service binding is not configured' };
+  }
+
+  const graphId = options?.id || `graph_${Date.now()}`;
+  const graphData = buildKnowledgeGraphData(extracted, {
+    title: options?.title,
+    description: options?.description,
+    createdBy: options?.createdBy
+  });
+
+  try {
+    const response = await env.KNOWLEDGE_GRAPH_WORKER.fetch(
+      'https://knowledge-graph-worker/saveGraphWithHistory',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: graphId,
+          graphData,
+          override: Boolean(options?.override)
+        })
+      }
+    );
+
+    const text = await response.text();
+    let parsed = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = { message: text };
+    }
+
+    if (!response.ok) {
+      return { saved: false, id: graphId, error: parsed?.error || text };
+    }
+
+    return { saved: true, id: graphId, response: parsed };
+  } catch (error) {
+    return { saved: false, id: graphId, error: error.message || 'Save failed' };
+  }
+}
+
+function buildKnowledgeGraphData(extracted, options) {
+  const title = options?.title || extracted.title || extracted.url || 'Extracted Content';
+  const description = options?.description || extracted.description || '';
+  const createdBy = options?.createdBy || 'web-content-extractor';
+  const sourceUrl = extracted.url || '';
+
+  return {
+    metadata: {
+      title,
+      description,
+      createdBy,
+      version: 0
+    },
+    nodes: [
+      {
+        id: crypto.randomUUID(),
+        color: '#4f6d7a',
+        label: title,
+        type: 'fulltext',
+        info: extracted.markdown,
+        bibl: sourceUrl ? [sourceUrl] : [],
+        imageWidth: null,
+        imageHeight: null,
+        visible: true,
+        position: { x: 0, y: 0 },
+        path: null
+      }
+    ],
+    edges: []
+  };
 }
 
 /**

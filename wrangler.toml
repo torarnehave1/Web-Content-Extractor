@@ -13,3 +13,7 @@ pages_build_output_dir = "dist"
 # Environment variables
 [vars]
 ENVIRONMENT = "production"
+
+[[services]]
+binding = "KNOWLEDGE_GRAPH_WORKER"
+service = "knowledge-graph-worker"

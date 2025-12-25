@@ -85,15 +85,10 @@ The app will be available at `http://localhost:3000`
 4. **Start the Cloudflare Worker locally (in a separate terminal)**
 
 ```bash
-npx wrangler pages dev dist --port 8787
+npx wrangler pages dev . --port 8788
 ```
 
-For local development, you can also test the worker endpoint directly:
-
-```bash
-cd functions
-npx wrangler dev
-```
+This serves the API at `http://localhost:8788/api/extract-content`.
 
 ## Cloudflare Pages Deployment
 
@@ -130,6 +125,7 @@ npx wrangler pages deploy dist --project-name=web-content-extractor
    - **Build command**: `npm run build`
    - **Build output directory**: `dist`
    - **Root directory**: `/`
+   - **Deploy command**: leave empty (Pages deploys automatically)
 5. Click **Save and Deploy**
 
 ### Step 3: Configure Environment (Optional)
@@ -189,6 +185,8 @@ npx wrangler pages deploy dist
 4. **Preview/Raw Toggle**: Switch between rendered markdown and raw markdown
 5. **Copy**: Click "Copy Markdown" to copy to clipboard
 6. **Download**: Click "Download .md" to save as a markdown file
+
+Tip: If a site blocks server-side fetching, switch to "Paste HTML" mode and paste the page HTML.
 
 ### Example URLs to Test
 
