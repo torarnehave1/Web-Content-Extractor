@@ -1,0 +1,20 @@
+name = "wcx-auth-worker"
+main = "index.js"
+compatibility_date = "2024-01-01"
+
+# Route for wcx subdomain authentication
+routes = [
+  { pattern = "wcx-auth.vegvisr.org/*", zone_id = "9178eccd3a7e3d71d8ae09defb09422a" }
+]
+
+# Also enable workers.dev for testing
+workers_dev = true
+
+# Service bindings to existing workers (optional - currently using fetch)
+# [[services]]
+# binding = "AUTH_WORKER"
+# service = "auth-worker"
+
+# [[services]]
+# binding = "DASH_WORKER"
+# service = "vegvisr-dash-worker"
