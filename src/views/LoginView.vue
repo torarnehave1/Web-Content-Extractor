@@ -127,7 +127,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '../stores/userStore'
 
-const AUTH_API = 'https://wcx-auth.vegvisr.org'
+const AUTH_API = 'https://wcx-auth-worker.torarnehave.workers.dev'
 const MAGIC_BASE = 'https://email-worker.torarnehave.workers.dev'
 
 const email = ref('')

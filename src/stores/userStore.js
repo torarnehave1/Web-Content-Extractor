@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 
-const AUTH_API = 'https://wcx-auth.vegvisr.org'
+const AUTH_API = 'https://wcx-auth-worker.torarnehave.workers.dev'
 
 export const useUserStore = defineStore('user', {
   state: () => ({
