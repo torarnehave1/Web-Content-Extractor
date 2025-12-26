@@ -3,15 +3,16 @@
  * Fetches web content and converts to markdown with proper attribution
  */
 
+// Handle OPTIONS preflight requests for CORS
+export async function onRequestOptions(context) {
+  const corsHeaders = buildCorsHeaders(context.request);
+  return new Response(null, { status: 204, headers: corsHeaders });
+}
+
 export async function onRequestPost(context) {
   const { request, env } = context;
 
   const corsHeaders = buildCorsHeaders(request);
-
-  // Handle OPTIONS request for CORS preflight
-  if (request.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
 
   try {
     if (!isAllowedOrigin(request)) {
